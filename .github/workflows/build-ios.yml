@@ -1,0 +1,63 @@
+```yaml
+      - name: Download Dark Souls from Yandex Disk
+        env:
+          LINK_GAME: ${{ secrets.LINK_GAME }}
+          LINK_UPDATE: ${{ secrets.LINK_UPDATE }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p input_game
+
+          python3 - <<'PY'
+          import os
+          import sys
+          import requests
+
+          def download_yandex(public_url, output_path):
+              if not public_url or not public_url.startswith("https://"):
+                  sys.exit(f"Invalid or missing link for {output_path}")
+
+              api_url = "https://cloud-api.yandex.net/v1/disk/public/resources/download"
+
+              response = requests.get(
+                  api_url,
+                  params={"public_key": public_url},
+                  timeout=60
+              )
+              response.raise_for_status()
+
+              download_url = response.json().get("href")
+              if not download_url:
+                  sys.exit(f"Yandex Disk returned no download link for {output_path}")
+
+              with requests.get(
+                  download_url,
+                  stream=True,
+                  timeout=(30, 300)
+              ) as response:
+                  response.raise_for_status()
+
+                  with open(output_path, "wb") as file:
+                      for chunk in response.iter_content(1024 * 1024):
+                          if chunk:
+                              file.write(chunk)
+
+              size = os.path.getsize(output_path)
+              if size == 0:
+                  sys.exit(f"Downloaded file is empty: {output_path}")
+
+              print(f"Downloaded {output_path}: {size:,} bytes")
+
+          download_yandex(
+              os.environ["LINK_GAME"],
+              "input_game/base_download.nsp"
+          )
+
+          download_yandex(
+              os.environ["LINK_UPDATE"],
+              "input_game/update_download.nsp"
+          )
+          PY
+
+          ls -lh input_game/
+```
